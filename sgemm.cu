@@ -5,7 +5,7 @@
 #include <iostream>
 #include <runner.cuh>
 #include <vector>
-#include <curand.h>
+#include <cuda_fp16.hpp>
 
 #define cudaCheck(err) (cudaCheck(err, __FILE__, __LINE__))
 
@@ -50,46 +50,41 @@ int main(int argc, char **argv) {
   // publishing event tasks in the target stream
   float elapsed_time;
   cudaEvent_t beg, end;
-  cudaEventCreate(&beg);
-  cudaEventCreate(&end);
+  cudaCheck(cudaEventCreate(&beg));
+  cudaCheck(cudaEventCreate(&end));
 
   // cuBLAS FLOPs ceiling is reached at 8192
-  std::vector<int> SIZE = {8192};
+  std::vector<int> SIZE = {8192 * 4};
 
   long m, n, k, max_size;
   max_size = SIZE[SIZE.size() - 1];
   std::cout << "Max size: " << max_size << std::endl;
 
-  float alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
+  half alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
 
-  float *dA = nullptr, *dB = nullptr, *dC = nullptr,
+  half *dA = nullptr, *dB = nullptr, *dC = nullptr,
         *dC_ref = nullptr; // device matrices
 
-  cudaCheck(cudaMalloc((void **)&dA, sizeof(float) * max_size * max_size));
-  cudaCheck(cudaMalloc((void **)&dB, sizeof(float) * max_size * max_size));
-  cudaCheck(cudaMalloc((void **)&dC, sizeof(float) * max_size * max_size));
-  cudaCheck(cudaMalloc((void **)&dC_ref, sizeof(float) * max_size * max_size));
+  cudaCheck(cudaMalloc((void **)&dA, sizeof(half) * max_size * max_size));
+  cudaCheck(cudaMalloc((void **)&dB, sizeof(half) * max_size * max_size));
+  cudaCheck(cudaMalloc((void **)&dC, sizeof(half) * max_size * max_size));
+  cudaCheck(cudaMalloc((void **)&dC_ref, sizeof(half) * max_size * max_size));
 
-  // Create cuRAND generator
-  curandGenerator_t gen;
-  assert(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT) == CURAND_STATUS_SUCCESS);
-  assert(curandSetPseudoRandomGeneratorSeed(gen, 1234ULL) == CURAND_STATUS_SUCCESS);
-
-  // Generate random numbers
-  assert(curandGenerateUniform(gen, dA, max_size * max_size) == CURAND_STATUS_SUCCESS);
-  assert(curandGenerateUniform(gen, dB, max_size * max_size) == CURAND_STATUS_SUCCESS);
-  assert(curandGenerateUniform(gen, dC, max_size * max_size) == CURAND_STATUS_SUCCESS);
+  // Initialize matrices with random values
+  init_random_matrix(dA, max_size);
+  init_random_matrix(dB, max_size);
+  init_random_matrix(dC, max_size);
   
   // Copy dC to dC_ref
-  cudaCheck(cudaMemcpy(dC_ref, dC, sizeof(float) * max_size * max_size,
+  cudaCheck(cudaMemcpy(dC_ref, dC, sizeof(half) * max_size * max_size,
                        cudaMemcpyDeviceToDevice));
 
   int repeat_times = 1;
   for (int size : SIZE) {
     m = n = k = size;
 
-    std::cout << "dimensions(m=n=k) " << m << ", alpha: " << alpha
-              << ", beta: " << beta << std::endl;
+    std::cout << "dimensions(m=n=k) " << m << ", alpha: " << __half2float(alpha)
+              << ", beta: " << __half2float(beta) << std::endl;
     // Verify the correctness of the calculation, and execute it once before the
     // kernel function timing to avoid cold start errors
     if (kernel_num != 0) {
@@ -115,7 +110,7 @@ int main(int argc, char **argv) {
       run_kernel(kernel_num, m, n, k, alpha, dA, dB, beta, dC, handle);
     }
     cudaEventRecord(end);
-    // cudaEventSynchronize(beg);
+    cudaEventSynchronize(beg);
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&elapsed_time, beg, end);
     // elapsed_time /= 1000.; // Convert to seconds
@@ -129,7 +124,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
     // make dC and dC_ref equal again (we modified dC while calling our kernel
     // for benchmarking)
-    cudaCheck(cudaMemcpy(dC, dC_ref, sizeof(float) * m * n,
+    cudaCheck(cudaMemcpy(dC, dC_ref, sizeof(half) * m * n,
                          cudaMemcpyDeviceToDevice));
   }
 
