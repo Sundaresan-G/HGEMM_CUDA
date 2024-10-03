@@ -5,6 +5,7 @@
 #include <iostream>
 #include <runner.cuh>
 #include <vector>
+#include <curand.h>
 
 #define cudaCheck(err) (cudaCheck(err, __FILE__, __LINE__))
 
@@ -31,10 +32,10 @@ int main(int argc, char **argv) {
   }
   cudaCheck(cudaSetDevice(deviceIdx));
 
-  printf("Running kernel %d on device %d.\n", kernel_num, deviceIdx);
-
   // print some device info
-  // CudaDeviceInfo();
+  CudaDeviceInfo();
+
+  printf("\nRunning kernel %d on device %d.\n", kernel_num, deviceIdx);
 
   // Declare the handle, create the handle, cublasCreate will return a value of
   // type cublasStatus_t to determine whether the handle was created
@@ -53,7 +54,7 @@ int main(int argc, char **argv) {
   cudaEventCreate(&end);
 
   // cuBLAS FLOPs ceiling is reached at 8192
-  std::vector<int> SIZE = {128, 256, 512, 1024, 2048, 4096};
+  std::vector<int> SIZE = {8192};
 
   long m, n, k, max_size;
   max_size = SIZE[SIZE.size() - 1];
@@ -61,35 +62,29 @@ int main(int argc, char **argv) {
 
   float alpha = 0.5, beta = 3.0; // GEMM input parameters, C=α*AB+β*C
 
-  float *A = nullptr, *B = nullptr, *C = nullptr,
-        *C_ref = nullptr; // host matrices
   float *dA = nullptr, *dB = nullptr, *dC = nullptr,
         *dC_ref = nullptr; // device matrices
-
-  A = (float *)malloc(sizeof(float) * max_size * max_size);
-  B = (float *)malloc(sizeof(float) * max_size * max_size);
-  C = (float *)malloc(sizeof(float) * max_size * max_size);
-  C_ref = (float *)malloc(sizeof(float) * max_size * max_size);
-
-  randomize_matrix(A, max_size * max_size);
-  randomize_matrix(B, max_size * max_size);
-  randomize_matrix(C, max_size * max_size);
 
   cudaCheck(cudaMalloc((void **)&dA, sizeof(float) * max_size * max_size));
   cudaCheck(cudaMalloc((void **)&dB, sizeof(float) * max_size * max_size));
   cudaCheck(cudaMalloc((void **)&dC, sizeof(float) * max_size * max_size));
   cudaCheck(cudaMalloc((void **)&dC_ref, sizeof(float) * max_size * max_size));
 
-  cudaCheck(cudaMemcpy(dA, A, sizeof(float) * max_size * max_size,
-                       cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(dB, B, sizeof(float) * max_size * max_size,
-                       cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(dC, C, sizeof(float) * max_size * max_size,
-                       cudaMemcpyHostToDevice));
-  cudaCheck(cudaMemcpy(dC_ref, C, sizeof(float) * max_size * max_size,
-                       cudaMemcpyHostToDevice));
+  // Create cuRAND generator
+  curandGenerator_t gen;
+  assert(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT) == CURAND_STATUS_SUCCESS);
+  assert(curandSetPseudoRandomGeneratorSeed(gen, 1234ULL) == CURAND_STATUS_SUCCESS);
 
-  int repeat_times = 50;
+  // Generate random numbers
+  assert(curandGenerateUniform(gen, dA, max_size * max_size) == CURAND_STATUS_SUCCESS);
+  assert(curandGenerateUniform(gen, dB, max_size * max_size) == CURAND_STATUS_SUCCESS);
+  assert(curandGenerateUniform(gen, dC, max_size * max_size) == CURAND_STATUS_SUCCESS);
+  
+  // Copy dC to dC_ref
+  cudaCheck(cudaMemcpy(dC_ref, dC, sizeof(float) * max_size * max_size,
+                       cudaMemcpyDeviceToDevice));
+
+  int repeat_times = 1;
   for (int size : SIZE) {
     m = n = k = size;
 
@@ -104,27 +99,12 @@ int main(int argc, char **argv) {
                  handle); // Executes the kernel, modifies the result matrix
       cudaCheck(cudaDeviceSynchronize());
       cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
-      cudaMemcpy(C, dC, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
-      cudaMemcpy(C_ref, dC_ref, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
 
-      if (!verify_matrix(C_ref, C, m * n)) {
+      if (!verify_matrix(dC_ref, dC, m * n)) {
         std::cout
             << "Failed to pass the correctness verification against NVIDIA "
                "cuBLAS."
             << std::endl;
-        if (m <= 128) {
-          std::cout << " Logging faulty output into " << errLogFile << "\n";
-          std::ofstream fs;
-          fs.open(errLogFile);
-          fs << "A:\n";
-          print_matrix(A, m, n, fs);
-          fs << "B:\n";
-          print_matrix(B, m, n, fs);
-          fs << "C:\n";
-          print_matrix(C, m, n, fs);
-          fs << "Should:\n";
-          print_matrix(C_ref, m, n, fs);
-        }
         exit(EXIT_FAILURE);
       }
     }
@@ -135,14 +115,14 @@ int main(int argc, char **argv) {
       run_kernel(kernel_num, m, n, k, alpha, dA, dB, beta, dC, handle);
     }
     cudaEventRecord(end);
-    cudaEventSynchronize(beg);
+    // cudaEventSynchronize(beg);
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&elapsed_time, beg, end);
-    elapsed_time /= 1000.; // Convert to seconds
+    // elapsed_time /= 1000.; // Convert to seconds
 
     long flops = 2 * m * n * k;
     printf(
-        "Average elapsed time: (%7.6f) s, performance: (%7.1f) GFLOPS. size: "
+        "Average elapsed time: (%7.6f) ms, performance: (%7.6f) TFLOPS. size: "
         "(%ld).\n",
         elapsed_time / repeat_times,
         (repeat_times * flops * 1e-9) / elapsed_time, m);
@@ -153,11 +133,7 @@ int main(int argc, char **argv) {
                          cudaMemcpyDeviceToDevice));
   }
 
-  // Free up CPU and GPU space
-  free(A);
-  free(B);
-  free(C);
-  free(C_ref);
+  // Free up GPU space
   cudaFree(dA);
   cudaFree(dB);
   cudaFree(dC);
