@@ -90,8 +90,11 @@ void runCublasFP16(cublasHandle_t& handle, int M, int N, int K, half alpha,
   // cuBLAS uses column-major order. So we change the order of our row-major A &
   // B, since (B^T*A^T)^T = (A*B)
   // This runs cuBLAS in full fp32 mode
-  assert(cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
-              A, K, &beta, C, N) == CUBLAS_STATUS_SUCCESS);
+  if(cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
+              A, K, &beta, C, N) != CUBLAS_STATUS_SUCCESS){
+    printf("cuBLAS Hgemm failed\n");
+    exit(EXIT_FAILURE);
+  }
 }
 
 void run_hgemm_hierarchialTiling(int M, int N, int K, half alpha, half *A, half *B,
