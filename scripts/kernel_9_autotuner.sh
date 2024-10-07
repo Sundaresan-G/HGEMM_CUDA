@@ -77,7 +77,7 @@ for bk in ${BK_VALUES[@]}; do
             echo "($CONFIG_NUM/$TOTAL_CONFIGS): BK=$bk TM=$tm TN=$tn BM=$bm BN=$bn NUM_THREADS=$nt" |& tee -a $OUTPUT
             # Run the benchmark and get the result
             # Kill the program after 4 seconds if it doesn't finish
-            timeout -v 4 ./sgemm 9 | tee -a $OUTPUT
+            timeout -v 4 ./hgemm 9 | tee -a $OUTPUT
           done
         done
       done

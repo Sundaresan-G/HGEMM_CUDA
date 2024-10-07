@@ -20,6 +20,11 @@ add_compile_options("$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CUDA>>:-G;-src-i
 
 # Add lineinfo flag
 add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>")
+# add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-G>")
+
+# Add -g flag
+# add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-g>")
+
 
 # Configure header file search paths
 include_directories(${CUDA_INCLUDE_DIRS})
@@ -28,6 +33,6 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 aux_source_directory(${PROJECT_SOURCE_DIR}/src SRC)
 
 # generate executable
-add_executable(sgemm sgemm.cu ${SRC})
-set_target_properties(sgemm PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
-target_link_libraries(sgemm ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY})
+add_executable(hgemm hgemm.cu ${SRC})
+set_target_properties(hgemm PROPERTIES CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
+target_link_libraries(hgemm ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY})

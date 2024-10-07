@@ -103,7 +103,7 @@ make
 echo "($CONFIG_NUM/$TOTAL_CONFIGS): BK=$BK BM=$BM BN=$BN WM=$WM WN=$WN WN_ITER=$WN_ITER TM=$TM TN=$TN NUM_THREADS=$NUM_THREADS" |& tee -a $OUTPUT
 # Run the benchmark and get the result
 # Kill the program after 8 seconds if it doesn't finish
-timeout -v 8 ./sgemm 11 | tee -a $OUTPUT
+timeout -v 8 ./hgemm 11 | tee -a $OUTPUT
 done
 done
 done
