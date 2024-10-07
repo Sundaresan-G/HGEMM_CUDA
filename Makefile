@@ -23,12 +23,13 @@ clean:
 FUNCTION := $$(cuobjdump -symbols build/hgemm | grep -i Warptiling | awk '{print $$NF}')
 
 cuobjdump: build
-	@cuobjdump -arch sm_86 -sass -fun $(FUNCTION) build/hgemm | c++filt > build/cuobjdump.sass
-	@cuobjdump -arch sm_86 -ptx -fun $(FUNCTION) build/hgemm | c++filt > build/cuobjdump.ptx
+	@cuobjdump -arch sm_70 -sass -fun $(FUNCTION) build/hgemm | c++filt > build/cuobjdump.sass
+	@cuobjdump -arch sm_70 -ptx -fun $(FUNCTION) build/hgemm | c++filt > build/cuobjdump.ptx
 
 # Usage: make profile KERNEL=<integer> PREFIX=<optional string>
 profile: build
-	@ncu --set full --export $(BENCHMARK_DIR)/$(PREFIX)kernel_$(KERNEL) --force-overwrite $(BUILD_DIR)/hgemm $(KERNEL)
+	@mkdir -p $(BENCHMARK_DIR)
+	@ncu --set full --force-overwrite --export $(BENCHMARK_DIR)/$(PREFIX)kernel_$(KERNEL) $(BUILD_DIR)/hgemm $(KERNEL)
 
 bench: build
 	@bash gen_benchmark_results.sh
