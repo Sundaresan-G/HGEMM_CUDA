@@ -104,6 +104,27 @@ int main(int argc, char **argv) {
       }
     }
 
+    if (kernel_num != 0) {
+      cudaEventRecord(beg);
+      for (int j = 0; j < repeat_times; j++) {
+        // We don't reset dC between runs to save time
+        run_kernel(0, m, n, k, alpha, dA, dB, beta, dC_ref, handle);
+      }
+      cudaEventRecord(end);
+      cudaEventSynchronize(beg);
+      cudaEventSynchronize(end);
+      cudaEventElapsedTime(&elapsed_time, beg, end);
+      // elapsed_time /= 1000.; // Convert to seconds
+
+      long flops = 2 * m * n * k;
+      printf(
+          "\ncuBLAS: Average elapsed time: (%7.6f) ms, performance: (%7.6f) TFLOPS. size: "
+          "(%ld).\n",
+          elapsed_time / repeat_times,
+          (repeat_times * flops * 1e-9) / elapsed_time, m);
+      fflush(stdout);
+    }
+
     cudaEventRecord(beg);
     for (int j = 0; j < repeat_times; j++) {
       // We don't reset dC between runs to save time
@@ -117,7 +138,7 @@ int main(int argc, char **argv) {
 
     long flops = 2 * m * n * k;
     printf(
-        "Average elapsed time: (%7.6f) ms, performance: (%7.6f) TFLOPS. size: "
+        "\tAverage elapsed time: (%7.6f) ms, performance: (%7.6f) TFLOPS. size: "
         "(%ld).\n",
         elapsed_time / repeat_times,
         (repeat_times * flops * 1e-9) / elapsed_time, m);
