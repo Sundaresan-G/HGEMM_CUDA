@@ -71,7 +71,7 @@ void init_random_matrix(half *mat, int num_elements){
 __global__ void verifyKernel(half *matRef, half *matOut, int size, int *errorFlagPtr) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < size) {
-    if(fabs(__half2float(matRef[i] - matOut[i])) > 1E-3){
+    if(fabs(__half2float(matRef[i] - matOut[i])) > 1E-3 * fabs(__half2float(matRef[i]))){
       *errorFlagPtr = 1;
     }
   }
