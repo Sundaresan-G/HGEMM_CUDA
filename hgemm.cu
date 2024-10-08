@@ -7,8 +7,6 @@
 #include <vector>
 #include <cuda_fp16.hpp>
 
-#define cudaCheck(err) (cudaCheck(err, __FILE__, __LINE__))
-
 const std::string errLogFile = "matrixValidationFailure.txt";
 
 int main(int argc, char **argv) {
@@ -79,6 +77,10 @@ int main(int argc, char **argv) {
   cudaCheck(cudaMemcpy(dC_ref, dC, sizeof(half) * max_size * max_size,
                        cudaMemcpyDeviceToDevice));
 
+  // Create a managed error flag
+  int *errorFlagPtr = nullptr;
+  cudaCheck(cudaMallocManaged((void **)&errorFlagPtr, sizeof(int)));
+
   int repeat_times = 1;
   for (int size : SIZE) {
     m = n = k = size;
@@ -95,7 +97,7 @@ int main(int argc, char **argv) {
       cudaCheck(cudaDeviceSynchronize());
       cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
 
-      if (!verify_matrix(dC_ref, dC, m * n)) {
+      if (!verify_matrix(dC_ref, dC, m * n, errorFlagPtr)) {
         std::cout
             << "Failed to pass the correctness verification against NVIDIA "
                "cuBLAS."
@@ -154,6 +156,7 @@ int main(int argc, char **argv) {
   cudaFree(dB);
   cudaFree(dC);
   cudaFree(dC_ref);
+  cudaFree(errorFlagPtr);
   cublasDestroy(handle);
 
   return 0;

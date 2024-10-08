@@ -14,7 +14,7 @@ float get_sec() {
 
 float cpu_elapsed_time(float &beg, float &end) { return 1.0e-6 * (end - beg); }
 
-void cudaCheck(cudaError_t error, const char *file, int line) {
+void cudaCheckFunc(cudaError_t error, const char *file, int line) {
   // if not defined NDEBUG
   # ifndef NDEBUG
   if (error != cudaSuccess) {
@@ -68,16 +68,23 @@ void init_random_matrix(half *mat, int num_elements){
   init_random_matrix_kernel<<<CEIL_DIV(num_elements, 256), 256>>>(mat, num_elements);
 }
 
-__global__ void verifyKernel(half *matRef, half *matOut, int N){
+__global__ void verifyKernel(half *matRef, half *matOut, int size, int *errorFlagPtr) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N) {
-    assert(fabs(__half2float(matRef[i] - matOut[i])) <= 1E-3);
+  if (i < size) {
+    if(fabs(__half2float(matRef[i] - matOut[i])) > 1E-3){
+      *errorFlagPtr = 1;
+    }
   }
 }
 
-bool verify_matrix(half *matRef, half *matOut, int N) {
-  verifyKernel<<<CEIL_DIV(N, 256), 256>>>(matRef, matOut, N);
-  return true;
+bool verify_matrix(half *matRef, half *matOut, int N, int *errorFlagPtr) {
+  verifyKernel<<<CEIL_DIV(N, 256), 256>>>(matRef, matOut, N, errorFlagPtr);
+  cudaCheck(cudaGetLastError());
+  cudaCheck(cudaDeviceSynchronize());
+  if (*errorFlagPtr == 0) {
+    return true;
+  } 
+  return false;
 }
 
 int div_ceil(int numerator, int denominator) {

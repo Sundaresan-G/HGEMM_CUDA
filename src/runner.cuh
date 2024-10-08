@@ -8,11 +8,13 @@
 #include <time.h>
 #include <unistd.h>
 
-void cudaCheck(cudaError_t error, const char *file,
+#define cudaCheck(err) (cudaCheckFunc(err, __FILE__, __LINE__))
+
+void cudaCheckFunc(cudaError_t error, const char *file,
                int line); // CUDA error check
 void CudaDeviceInfo();    // print CUDA information
 
-bool verify_matrix(half *mat1, half *mat2, int N);
+bool verify_matrix(half *mat1, half *mat2, int size, int *errorFlagPtr);
 
 float cpu_elapsed_time(float &beg, float &end); // Calculate time difference
 
