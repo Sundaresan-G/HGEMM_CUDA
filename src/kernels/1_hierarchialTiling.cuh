@@ -67,13 +67,14 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
   wmma::fragment<wmma::matrix_a, mma_m, mma_n, mma_k, half, wmma::row_major> a_frag[WMITER];
   wmma::fragment<wmma::matrix_b, mma_m, mma_n, mma_k, half, wmma::row_major> b_frag[WNITER];
-  wmma::fragment<wmma::accumulator, mma_m, mma_n, mma_k, half> c_frag[WMITER][WNITER];
+  wmma::fragment<wmma::accumulator, mma_m, mma_n, mma_k, half> c_acc[WMITER][WNITER];
+  wmma::fragment<wmma::accumulator, mma_m, mma_n, mma_k, half> c_frag;
 
   for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
         for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
 
           // Initialize the output to zero
-          wmma::fill_fragment(c_frag[wSubRowIdx][wSubColIdx], 0.0f);
+          wmma::fill_fragment(c_acc[wSubRowIdx][wSubColIdx], 0.0f);
         }
   }
 
@@ -107,7 +108,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
       for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
         for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
           // Perform the matrix multiplication
-          wmma::mma_sync(c_frag[wSubRowIdx][wSubColIdx], a_frag[wSubRowIdx], b_frag[wSubColIdx], c_frag[wSubRowIdx][wSubColIdx]);
+          wmma::mma_sync(c_acc[wSubRowIdx][wSubColIdx], a_frag[wSubRowIdx], b_frag[wSubColIdx], c_acc[wSubRowIdx][wSubColIdx]);
         }
       }
     }
@@ -119,10 +120,19 @@ __global__ void __launch_bounds__(NUM_THREADS)
   // write out the results
   for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
     for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
-      // for(int t=0; t<c_frag[wSubRowIdx][wSubColIdx].num_elements; t++) {
-      //   c_frag[wSubRowIdx][wSubColIdx].x[t] *= alpha;
-      // }
-      wmma::store_matrix_sync(&C[wSubRowIdx * mma_k * N + wSubColIdx * mma_n], c_frag[wSubRowIdx][wSubColIdx], N, wmma::mem_row_major);      
+      // Load the current sub-matrix from C
+      wmma::load_matrix_sync(c_frag, C, N, wmma::mem_row_major);
+
+      for(int i=0; i < c_frag.num_elements; i++) {
+        c_frag.x[i] = alpha * c_acc[wSubRowIdx][wSubColIdx].x[i] + beta * c_frag.x[i];
+      }
+
+      wmma::store_matrix_sync(C, c_frag, N, wmma::mem_row_major);  
+
+      // Move C column to the right
+      C += mma_n; 
     }
+    // Move C row down
+    C += mma_m * N;
   }
 }
