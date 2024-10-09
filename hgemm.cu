@@ -92,10 +92,12 @@ int main(int argc, char **argv) {
     if (kernel_num != 0) {
       run_kernel(0, m, n, k, alpha, dA, dB, beta, dC_ref,
                  handle); // cuBLAS
+      cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
+      cudaCheck(cudaDeviceSynchronize());
       run_kernel(kernel_num, m, n, k, alpha, dA, dB, beta, dC,
                  handle); // Executes the kernel, modifies the result matrix
-      cudaCheck(cudaDeviceSynchronize());
       cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
+      cudaCheck(cudaDeviceSynchronize());
 
       if (!verify_matrix(dC_ref, dC, m * n, errorFlagPtr)) {
         std::cout

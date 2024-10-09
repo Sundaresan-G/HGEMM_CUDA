@@ -96,10 +96,12 @@ void runCublasFP16(cublasHandle_t& handle, int M, int N, int K, half alpha,
                    half *A, half *B, half beta, half *C) {
   // cuBLAS uses column-major order. So we change the order of our row-major A &
   // B, since (B^T*A^T)^T = (A*B)
-  // This runs cuBLAS in full fp32 mode
-  if(cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
-              A, K, &beta, C, N) != CUBLAS_STATUS_SUCCESS){
-    printf("cuBLAS Hgemm failed\n");
+  
+  cublasStatus_t status = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
+              A, K, &beta, C, N);
+  if( status != CUBLAS_STATUS_SUCCESS){
+    // Print the reason for error
+    printf("cublasHgemm failed: %d\n", status); 
     exit(EXIT_FAILURE);
   }
 }
@@ -120,7 +122,7 @@ void run_hgemm_hierarchialTiling(int M, int N, int K, half alpha, half *A, half 
     static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
                   "BM, BN, BK must be a multiple of WM, WN, WK respectively");
 
-    const WMMA_MNK wmma_mnk = MNK_16x16x16;
+    const WMMA_MNK wmma_mnk = MNK_32x8x16;
 
     static_assert(WK % 16 == 0, "WK must be a multiple of 16");
     
@@ -171,6 +173,66 @@ void run_hgemm_hierarchialTiling(int M, int N, int K, half alpha, half *A, half 
             static_assert(WN % 8 == 0, "WN must be a multiple of 8");
             static_assert(WM % 32 == 0, "WM must be a multiple of 32");
             hgemmHierarchialTiling<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+    }
+}
+
+void run_hgemm_hierarchialTilingVectorize(int M, int N, int K, half alpha, half *A, half *B,
+                     half beta, half *C) {
+    const uint NUM_THREADS = 128;
+    const uint BN = 128;
+    const uint BM = 128;
+    const uint BK = 16;
+
+    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#wmma-type-sizes
+    // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
+    const uint WN = 64;
+    const uint WM = 64;
+    const uint WK = 16;
+
+    static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
+                  "BM, BN, BK must be a multiple of WM, WN, WK respectively");
+
+    const WMMA_MNK wmma_mnk = MNK_32x8x16;
+
+    static_assert(WK % 16 == 0, "WK must be a multiple of 16");
+    
+    dim3 blockDim(NUM_THREADS);
+
+    constexpr uint NUM_WARPS = NUM_THREADS / 32;
+
+    // warptile in threadblocktile
+    static_assert((BN / WN) * (BM / WM) == NUM_WARPS);
+
+    static_assert((NUM_THREADS * 8) % BK == 0,
+                  "NUM_THREADS*8 must be multiple of BK to avoid quantization ");
+    static_assert((NUM_THREADS * 8) % BN == 0,
+                  "NUM_THREADS*8 must be multiple of BN to avoid quantization ");
+    static_assert((BM * BK) % (8 * NUM_THREADS) == 0,
+                  "BM*BK must be a multiple of 8*NUM_THREADS to vectorize loads");
+    static_assert((BN * BK) % (8 * NUM_THREADS) == 0,
+                  "BN*BK must be a multiple of 8*NUM_THREADS to vectorize loads");
+
+    dim3 gridDim(CEIL_DIV(N, BN), CEIL_DIV(M, BM));
+
+    switch (wmma_mnk) {
+        case MNK_16x16x16:
+            static_assert(WN % 16 == 0, "WN must be a multiple of 16");
+            static_assert(WM % 16 == 0, "WM must be a multiple of 16");
+            hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+        case MNK_32x8x16:
+            static_assert(WN % 32 == 0, "WN must be a multiple of 32");
+            static_assert(WM % 8 == 0, "WM must be a multiple of 8");
+            hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+        case MNK_8x32x16:
+            static_assert(WN % 8 == 0, "WN must be a multiple of 8");
+            static_assert(WM % 32 == 0, "WM must be a multiple of 32");
+            hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
     }
@@ -530,9 +592,9 @@ void run_kernel(int kernel_num, int M, int N, int K, half alpha, half *A,
   case 1:
     run_hgemm_hierarchialTiling(M, N, K, alpha, A, B, beta, C);
     break;
-  // case 2:
-  //   run_hgemm_coalesce(M, N, K, alpha, A, B, beta, C);
-  //   break;
+  case 2:
+    run_hgemm_hierarchialTilingVectorize(M, N, K, alpha, A, B, beta, C);
+    break;
   // case 3:
   //   run_hgemm_shared_mem_block(M, N, K, alpha, A, B, beta, C);
   //   break;
