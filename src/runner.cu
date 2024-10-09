@@ -298,6 +298,66 @@ void run_hgemm_hierarchialTilingVectorizeTransposed(int M, int N, int K, half al
     }
 }
 
+void run_hgemm_hierarchialTilingVectorizeDoubleBuffering(int M, int N, int K, half alpha, half *A, half *B,
+                     half beta, half *C) {
+    const uint NUM_THREADS = 128;
+    const uint BN = 128;
+    const uint BM = 128;
+    const uint BK = 16;
+
+    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#wmma-type-sizes
+    // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
+    const uint WN = 64;
+    const uint WM = 64;
+    const uint WK = 16;
+
+    static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
+                  "BM, BN, BK must be a multiple of WM, WN, WK respectively");
+
+    const WMMA_MNK wmma_mnk = MNK_32x8x16;
+
+    static_assert(WK % 16 == 0, "WK must be a multiple of 16");
+    
+    dim3 blockDim(NUM_THREADS);
+
+    constexpr uint NUM_WARPS = NUM_THREADS / 32;
+
+    // warptile in threadblocktile
+    static_assert((BN / WN) * (BM / WM) == NUM_WARPS);
+
+    static_assert((NUM_THREADS * 8) % BK == 0,
+                  "NUM_THREADS*8 must be multiple of BK to avoid quantization ");
+    static_assert((NUM_THREADS * 8) % BN == 0,
+                  "NUM_THREADS*8 must be multiple of BN to avoid quantization ");
+    static_assert((BM * BK) % (8 * NUM_THREADS) == 0,
+                  "BM*BK must be a multiple of 8*NUM_THREADS to vectorize loads");
+    static_assert((BN * BK) % (8 * NUM_THREADS) == 0,
+                  "BN*BK must be a multiple of 8*NUM_THREADS to vectorize loads");
+
+    dim3 gridDim(CEIL_DIV(N, BN), CEIL_DIV(M, BM));
+
+    switch (wmma_mnk) {
+        case MNK_16x16x16:
+            static_assert(WN % 16 == 0, "WN must be a multiple of 16");
+            static_assert(WM % 16 == 0, "WM must be a multiple of 16");
+            hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+        case MNK_32x8x16:
+            static_assert(WN % 32 == 0, "WN must be a multiple of 32");
+            static_assert(WM % 8 == 0, "WM must be a multiple of 8");
+            hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+        case MNK_8x32x16:
+            static_assert(WN % 8 == 0, "WN must be a multiple of 8");
+            static_assert(WM % 32 == 0, "WM must be a multiple of 32");
+            hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
+              <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+    }
+}
+
 // void run_hgemm_coalesce(int M, int N, int K, float alpha, float *A, float *B,
 //                         float beta, float *C) {
 //   dim3 gridDim(CEIL_DIV(M, 32), CEIL_DIV(N, 32));
@@ -660,9 +720,9 @@ void run_kernel(int kernel_num, int M, int N, int K, half alpha, half *A,
     // Performs worse than case 2
     run_hgemm_hierarchialTilingVectorizeTransposed(M, N, K, alpha, A, B, beta, C);
     break;
-  // case 4:
-  //   runSgemm1DBlocktiling(M, N, K, alpha, A, B, beta, C);
-  //   break;
+  case 4:
+    run_hgemm_hierarchialTilingVectorizeDoubleBuffering(M, N, K, alpha, A, B, beta, C);
+    break;
   // case 5:
   //   runSgemm2DBlocktiling(M, N, K, alpha, A, B, beta, C);
   //   break;
