@@ -20,6 +20,11 @@ add_compile_options("$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CUDA>>:-G>")
 # Add lineinfo flag in release mode
 add_compile_options("$<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-lineinfo>")
 
+# Remove L1 caching
+if(CMAKE_CUDA_COMPILER)
+    set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -Xptxas -dlcm=cg")
+endif()
+
 
 # Configure header file search paths
 include_directories(${CUDA_INCLUDE_DIRS})
