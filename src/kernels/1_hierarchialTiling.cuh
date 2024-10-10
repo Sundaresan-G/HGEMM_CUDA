@@ -93,16 +93,17 @@ __global__ void __launch_bounds__(NUM_THREADS)
     }
 
     __syncthreads();
-    auto AsWarpLocalInBlock = &As[warpRow * WM * BK];
-    auto BsWarpLocalInBlock = &Bs[warpCol * WN];
     for (uint warpKidx = 0; warpKidx < BK; warpKidx += WK) {
+      // auto AsWarpLocalInBlock = &As[warpRow * WM * BK + warpKidx];
+      // auto BsWarpLocalInBlock = &Bs[warpCol * WN + warpKidx * BN];
+
       for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
-        wmma::load_matrix_sync(a_frag[wSubRowIdx], AsWarpLocalInBlock, BK);
-        AsWarpLocalInBlock += mma_m * BK;
+        wmma::load_matrix_sync(a_frag[wSubRowIdx], &As[warpRow * WM * BK + warpKidx + wSubRowIdx * mma_m * BK], BK);
+        // AsWarpLocalInBlock += mma_m * BK;
       }
       for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
-        wmma::load_matrix_sync(b_frag[wSubColIdx], BsWarpLocalInBlock, BN);
-        BsWarpLocalInBlock += mma_n;
+        wmma::load_matrix_sync(b_frag[wSubColIdx], &Bs[warpCol * WN + warpKidx * BN + wSubColIdx * mma_n], BN);
+        // BsWarpLocalInBlock += mma_n;
       }
 
       for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
