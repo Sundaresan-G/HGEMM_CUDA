@@ -94,16 +94,17 @@ __global__ void __launch_bounds__(NUM_THREADS)
     }
 
     __syncthreads();
-    auto AsWarpLocalInBlock = &As[warpRow * WM];
-    auto BsWarpLocalInBlock = &Bs[warpCol * WN];
     for (uint warpKidx = 0; warpKidx < BK; warpKidx += WK) {
+      // auto AsWarpLocalInBlock = &As[warpRow * WM * BK + warpKidx];
+      // auto BsWarpLocalInBlock = &Bs[warpCol * WN + warpKidx * BN];
+
       for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
-        wmma::load_matrix_sync(a_frag[wSubRowIdx], AsWarpLocalInBlock, BM);
-        AsWarpLocalInBlock += mma_m;
+        wmma::load_matrix_sync(a_frag[wSubRowIdx], &As[warpRow * WM + warpKidx * BM + wSubRowIdx * mma_m], BM);
+        // AsWarpLocalInBlock += mma_m * BK;
       }
       for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
-        wmma::load_matrix_sync(b_frag[wSubColIdx], BsWarpLocalInBlock, BN);
-        BsWarpLocalInBlock += mma_n;
+        wmma::load_matrix_sync(b_frag[wSubColIdx], &Bs[warpCol * WN + warpKidx * BN + wSubColIdx * mma_n], BN);
+        // BsWarpLocalInBlock += mma_n;
       }
 
       for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
@@ -113,6 +114,26 @@ __global__ void __launch_bounds__(NUM_THREADS)
         }
       }
     }
+
+    // auto AsWarpLocalInBlock = &As[warpRow * WM];
+    // auto BsWarpLocalInBlock = &Bs[warpCol * WN];
+    // for (uint warpKidx = 0; warpKidx < BK; warpKidx += WK) {
+    //   for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
+    //     wmma::load_matrix_sync(a_frag[wSubRowIdx], AsWarpLocalInBlock, BM);
+    //     AsWarpLocalInBlock += mma_m;
+    //   }
+    //   for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
+    //     wmma::load_matrix_sync(b_frag[wSubColIdx], BsWarpLocalInBlock, BN);
+    //     BsWarpLocalInBlock += mma_n;
+    //   }
+
+    //   for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
+    //     for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
+    //       // Perform the matrix multiplication
+    //       wmma::mma_sync(c_acc[wSubRowIdx][wSubColIdx], a_frag[wSubRowIdx], b_frag[wSubColIdx], c_acc[wSubRowIdx][wSubColIdx]);
+    //     }
+    //   }
+    // }
     A += BK;     // move BK columns to right
     B += BK * N; // move BK rows down
     __syncthreads();

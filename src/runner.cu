@@ -249,14 +249,14 @@ void run_hgemm_hierarchialTilingVectorizeTransposed(int M, int N, int K, half al
     // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
     const uint WN = 64;
     const uint WM = 64;
-    const uint WK = 32;
+    const uint WK = 16;
 
     static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
                   "BM, BN, BK must be a multiple of WM, WN, WK respectively");
 
     const WMMA_MNK wmma_mnk = MNK_16x16x16;
 
-    static_assert(WK % 16 == 0, "WK must be a multiple of 16");
+    static_assert(WK == 16, "WK must be equal to 16 (mma_k)");
     
     dim3 blockDim(NUM_THREADS);
 
