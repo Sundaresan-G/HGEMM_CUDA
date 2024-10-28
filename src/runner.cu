@@ -60,7 +60,7 @@ __global__ void init_random_matrix_kernel(half *mat, int num_elements) {
   curandState localState;
   curand_init(1234, i, 0, &localState);
   if (i < num_elements) {
-    mat[i] = __float2half(curand_uniform(&localState));
+    mat[i] = __float2half(curand_uniform(&localState) * 100);
   }
 }
 
@@ -163,13 +163,13 @@ void run_hgemm_hierarchialTiling(int M, int N, int K, half alpha, half *A, half 
             hgemmHierarchialTiling<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_32x8x16:
+        case MNK_8x32x16:
             static_assert(WN % 32 == 0, "WN must be a multiple of 32");
             static_assert(WM % 8 == 0, "WM must be a multiple of 8");
             hgemmHierarchialTiling<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_8x32x16:
+        case MNK_32x8x16:
             static_assert(WN % 8 == 0, "WN must be a multiple of 8");
             static_assert(WM % 32 == 0, "WM must be a multiple of 32");
             hgemmHierarchialTiling<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
@@ -223,13 +223,13 @@ void run_hgemm_hierarchialTilingVectorize(int M, int N, int K, half alpha, half 
             hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_32x8x16:
+        case MNK_8x32x16:
             static_assert(WN % 32 == 0, "WN must be a multiple of 32");
             static_assert(WM % 8 == 0, "WM must be a multiple of 8");
             hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_8x32x16:
+        case MNK_32x8x16:
             static_assert(WN % 8 == 0, "WN must be a multiple of 8");
             static_assert(WM % 32 == 0, "WM must be a multiple of 32");
             hgemmHierarchialTilingVectorize<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
@@ -283,13 +283,13 @@ void run_hgemm_hierarchialTilingVectorizeTransposed(int M, int N, int K, half al
             hgemmHierarchialTilingVectorizeTransposed<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_32x8x16:
+        case MNK_8x32x16:
             static_assert(WN % 32 == 0, "WN must be a multiple of 32");
             static_assert(WM % 8 == 0, "WM must be a multiple of 8");
             hgemmHierarchialTilingVectorizeTransposed<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_8x32x16:
+        case MNK_32x8x16:
             static_assert(WN % 8 == 0, "WN must be a multiple of 8");
             static_assert(WM % 32 == 0, "WM must be a multiple of 32");
             hgemmHierarchialTilingVectorizeTransposed<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
@@ -343,13 +343,13 @@ void run_hgemm_hierarchialTilingVectorizeDoubleBuffering(int M, int N, int K, ha
             hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 16, 16, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_32x8x16:
+        case MNK_8x32x16:
             static_assert(WN % 32 == 0, "WN must be a multiple of 32");
             static_assert(WM % 8 == 0, "WM must be a multiple of 8");
             hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 8, 32, 16>
               <<<gridDim, blockDim>>>(M, N, K, alpha, A, B, beta, C);
             break;
-        case MNK_8x32x16:
+        case MNK_32x8x16:
             static_assert(WN % 8 == 0, "WN must be a multiple of 8");
             static_assert(WM % 32 == 0, "WM must be a multiple of 32");
             hgemmHierarchialTilingVectorizeDoubleBuffering<BM, BN, BK, WM, WN, WK, NUM_THREADS, 32, 8, 16>
