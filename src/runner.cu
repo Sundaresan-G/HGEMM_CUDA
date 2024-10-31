@@ -54,16 +54,21 @@ void CudaDeviceInfo() {
          props.multiProcessorCount, props.warpSize);
 };
 
-__global__ void verifyKernel(float *matRef, float *matOut, int N){
+__global__ void verifyKernel(float *matRef, float *matOut, int num_elem, int *errorFlagPtr){
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < N) {
-    assert(fabs(matRef[i] - matOut[i]) <= 1E-3);
+  if (i < num_elem && fabs(matRef[i] - matOut[i]) > 1E-4 * fabs(matRef[i])) {
+    *errorFlagPtr = 1;
   }
 }
 
-bool verify_matrix(float *matRef, float *matOut, int N) {
-  verifyKernel<<<CEIL_DIV(N, 256), 256>>>(matRef, matOut, N);
-  return true;
+bool verify_matrix(float *matRef, float *matOut, int N, int *errorFlagPtr) {
+  verifyKernel<<<CEIL_DIV(N, 256), 256>>>(matRef, matOut, N, errorFlagPtr);
+  cudaCheck(cudaGetLastError(), __FILE__, __LINE__);
+  cudaCheck(cudaDeviceSynchronize(), __FILE__, __LINE__);
+  if (*errorFlagPtr == 0) {
+    return true;
+  } 
+  return false;
 }
 
 int div_ceil(int numerator, int denominator) {
@@ -76,8 +81,13 @@ void runCublasFP32(cublasHandle_t& handle, int M, int N, int K, float alpha,
   // cuBLAS uses column-major order. So we change the order of our row-major A &
   // B, since (B^T*A^T)^T = (A*B)
   // This runs cuBLAS in full fp32 mode
-  assert(cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
-              A, K, &beta, C, N) == CUBLAS_STATUS_SUCCESS);
+  auto status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B, N,
+              A, K, &beta, C, N);
+  if( status != CUBLAS_STATUS_SUCCESS){
+    // Print the reason for error
+    printf("cublasSgemm failed: %d\n", status); 
+    exit(EXIT_FAILURE);
+  }
 }
 
 void run_sgemm_naive(int M, int N, int K, float alpha, float *A, float *B,

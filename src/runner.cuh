@@ -12,7 +12,7 @@ void cudaCheck(cudaError_t error, const char *file,
                int line); // CUDA error check
 void CudaDeviceInfo();    // print CUDA information
 
-bool verify_matrix(float *mat1, float *mat2, int N);
+bool verify_matrix(float *mat1, float *mat2, int N, int *errorFlagPtr);
 
 float cpu_elapsed_time(float &beg, float &end); // Calculate time difference
 

@@ -50,11 +50,12 @@ int main(int argc, char **argv) {
   // publishing event tasks in the target stream
   float elapsed_time;
   cudaEvent_t beg, end;
-  cudaEventCreate(&beg);
-  cudaEventCreate(&end);
+  cudaCheck(cudaEventCreate(&beg));
+  cudaCheck(cudaEventCreate(&end));
+
 
   // cuBLAS FLOPs ceiling is reached at 8192
-  std::vector<int> SIZE = {8192};
+  std::vector<int> SIZE = {32768};
 
   long m, n, k, max_size;
   max_size = SIZE[SIZE.size() - 1];
@@ -72,17 +73,22 @@ int main(int argc, char **argv) {
 
   // Create cuRAND generator
   curandGenerator_t gen;
-  assert(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT) == CURAND_STATUS_SUCCESS);
-  assert(curandSetPseudoRandomGeneratorSeed(gen, 1234ULL) == CURAND_STATUS_SUCCESS);
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
 
   // Generate random numbers
-  assert(curandGenerateUniform(gen, dA, max_size * max_size) == CURAND_STATUS_SUCCESS);
-  assert(curandGenerateUniform(gen, dB, max_size * max_size) == CURAND_STATUS_SUCCESS);
-  assert(curandGenerateUniform(gen, dC, max_size * max_size) == CURAND_STATUS_SUCCESS);
+  curandGenerateUniform(gen, dA, max_size * max_size);
+  curandGenerateUniform(gen, dB, max_size * max_size);
+  curandGenerateUniform(gen, dC, max_size * max_size);
   
   // Copy dC to dC_ref
   cudaCheck(cudaMemcpy(dC_ref, dC, sizeof(float) * max_size * max_size,
                        cudaMemcpyDeviceToDevice));
+
+  // Create a managed error flag
+  int *errorFlagPtr = nullptr;
+  cudaCheck(cudaMallocManaged((void **)&errorFlagPtr, sizeof(int)));
+  *errorFlagPtr = 0;
 
   int repeat_times = 1;
   for (int size : SIZE) {
@@ -100,7 +106,7 @@ int main(int argc, char **argv) {
       cudaCheck(cudaDeviceSynchronize());
       cudaCheck(cudaGetLastError()); // Check for async errors during kernel run
 
-      if (!verify_matrix(dC_ref, dC, m * n)) {
+      if (!verify_matrix(dC_ref, dC, m * n, errorFlagPtr)) {
         std::cout
             << "Failed to pass the correctness verification against NVIDIA "
                "cuBLAS."
@@ -115,7 +121,7 @@ int main(int argc, char **argv) {
       run_kernel(kernel_num, m, n, k, alpha, dA, dB, beta, dC, handle);
     }
     cudaEventRecord(end);
-    // cudaEventSynchronize(beg);
+    cudaEventSynchronize(beg);
     cudaEventSynchronize(end);
     cudaEventElapsedTime(&elapsed_time, beg, end);
     // elapsed_time /= 1000.; // Convert to seconds
@@ -138,6 +144,7 @@ int main(int argc, char **argv) {
   cudaFree(dB);
   cudaFree(dC);
   cudaFree(dC_ref);
+  cudaFree(errorFlagPtr);
   cublasDestroy(handle);
 
   return 0;
