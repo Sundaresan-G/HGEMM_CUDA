@@ -180,15 +180,15 @@ void run_hgemm_hierarchialTiling(int M, int N, int K, half alpha, half *A, half 
 
 void run_hgemm_hierarchialTilingVectorize(int M, int N, int K, half alpha, half *A, half *B,
                      half beta, half *C) {
-    const uint NUM_THREADS = 128;
-    const uint BN = 128;
-    const uint BM = 128;
+    const uint NUM_THREADS = 256;
+    const uint BN = 256;
+    const uint BM = 256;
     const uint BK = 32;
 
     // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#wmma-type-sizes
     // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
     const uint WN = 64;
-    const uint WM = 64;
+    const uint WM = 128;
     const uint WK = 16;
 
     static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
@@ -240,21 +240,21 @@ void run_hgemm_hierarchialTilingVectorize(int M, int N, int K, half alpha, half 
 
 void run_hgemm_hierarchialTilingVectorizeTransposed(int M, int N, int K, half alpha, half *A, half *B,
                      half beta, half *C) {
-    const uint NUM_THREADS = 128;
-    const uint BN = 128;
-    const uint BM = 128;
+    const uint NUM_THREADS = 256;
+    const uint BN = 256;
+    const uint BM = 256;
     const uint BK = 32;
 
     // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#wmma-type-sizes
     // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
     const uint WN = 64;
-    const uint WM = 64;
+    const uint WM = 128;
     const uint WK = 16;
 
     static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
                   "BM, BN, BK must be a multiple of WM, WN, WK respectively");
 
-    const WMMA_MNK wmma_mnk = MNK_16x16x16;
+    const WMMA_MNK wmma_mnk = MNK_8x32x16;
 
     static_assert(WK == 16, "WK must be equal to 16 (mma_k)");
     
@@ -300,15 +300,15 @@ void run_hgemm_hierarchialTilingVectorizeTransposed(int M, int N, int K, half al
 
 void run_hgemm_hierarchialTilingVectorizeDoubleBuffering(int M, int N, int K, half alpha, half *A, half *B,
                      half beta, half *C) {
-    const uint NUM_THREADS = 128;
-    const uint BN = 128;
-    const uint BM = 128;
-    const uint BK = 32;
+    const uint NUM_THREADS = 256;
+    const uint BN = 256;
+    const uint BM = 256;
+    const uint BK = 16;
 
     // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#wmma-type-sizes
     // For accumulator precision of fp16, m-n-k supported are 16x16x16, 32x8x16, 8x32x16
     const uint WN = 64;
-    const uint WM = 64;
+    const uint WM = 128;
     const uint WK = 16;
 
     static_assert(BM % WM == 0 and BN % WN == 0 and BK % WK == 0,
